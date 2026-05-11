@@ -1,233 +1,164 @@
-# Full Stack FastAPI Template
+# Fullstack Dev Test Task
 
-<a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Docker+Compose%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Docker%20Compose/badge.svg" alt="Test Docker Compose"></a>
-<a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Backend%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Backend/badge.svg" alt="Test Backend"></a>
-<a href="https://coverage-badge.samuelcolvin.workers.dev/redirect/fastapi/full-stack-fastapi-template" target="_blank"><img src="https://coverage-badge.samuelcolvin.workers.dev/fastapi/full-stack-fastapi-template.svg" alt="Coverage"></a>
+This repository contains two deliverables:
 
-## Technology Stack and Features
+- A role-aware access control implementation on top of the FastAPI full-stack template.
+- A tunnel-only Ghost deployment script for Hetzner Cloud in `infra/ghost/`.
 
-- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) for the Python backend API.
-  - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) for the Python SQL database interactions (ORM).
-  - 🔍 [Pydantic](https://docs.pydantic.dev), used by FastAPI, for the data validation and settings management.
-  - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
-- 🚀 [React](https://react.dev) for the frontend.
-  - 💃 Using TypeScript, hooks, [Vite](https://vitejs.dev), and other parts of a modern frontend stack.
-  - 🎨 [Tailwind CSS](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com) for the frontend components.
-  - 🤖 An automatically generated frontend client.
-  - 🧪 [Playwright](https://playwright.dev) for End-to-End testing.
-  - 🦇 Dark mode support.
-- 🐋 [Docker Compose](https://www.docker.com) for development and production.
-- 🔒 Secure password hashing by default.
-- 🔑 JWT (JSON Web Token) authentication.
-- 📫 Email based password recovery.
-- 📬 [Mailcatcher](https://mailcatcher.me) for local email testing during development.
-- ✅ Tests with [Pytest](https://pytest.org).
-- 📞 [Traefik](https://traefik.io) as a reverse proxy / load balancer.
-- 🚢 Deployment instructions using Docker Compose, including how to set up a frontend Traefik proxy to handle automatic HTTPS certificates.
-- 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
+The application keeps the original FastAPI / SQLModel / PostgreSQL backend and React / TypeScript frontend, but adds explicit roles, backend authorization dependencies, role-aware frontend navigation, a metrics page, seed data, tests, and documentation.
 
-### Dashboard Login
+## Implemented RBAC Scope
 
-[![API docs](img/login.png)](https://github.com/fastapi/full-stack-fastapi-template)
+Roles:
 
-### Dashboard - Admin
+- `admin`: full access to user management, role changes, and metrics.
+- `manager`: can list users and view metrics, but cannot create, edit, or delete users.
+- `member`: can access their own profile and normal app features only.
 
-[![API docs](img/dashboard.png)](https://github.com/fastapi/full-stack-fastapi-template)
+Permission matrix:
 
-### Dashboard - Items
+| Action | admin | manager | member |
+| --- | --- | --- | --- |
+| List all users | Yes | Yes | No |
+| Create user | Yes | No | No |
+| View metrics | Yes | Yes | No |
+| View/update own profile | Yes | Yes | Yes |
+| View another profile | Yes | Yes | No |
+| Update any profile | Yes | No | No |
+| Delete users | Yes | No | No |
 
-[![API docs](img/dashboard-items.png)](https://github.com/fastapi/full-stack-fastapi-template)
+Protected surfaces:
 
-### Dashboard - Dark Mode
+- `GET /api/v1/users/` is available to admins and managers.
+- `POST /api/v1/users/`, `PATCH /api/v1/users/{user_id}`, and `DELETE /api/v1/users/{user_id}` are admin-only.
+- `GET /api/v1/metrics/` is available to admins and managers.
+- `/admin` is visible to admins and managers; write actions are hidden for managers.
+- `/metrics` is visible to admins and managers.
+- Unauthorized direct navigation shows an access denied page instead of silently redirecting.
 
-[![API docs](img/dashboard-dark.png)](https://github.com/fastapi/full-stack-fastapi-template)
+## Authorization Approach
 
-### Interactive API Documentation
+Roles are stored on `User.role` as one of `admin`, `manager`, or `member`. The existing `is_superuser` field is preserved for compatibility with the base template, but admin users are normalized so `role="admin"` and `is_superuser=true` stay aligned. A database migration adds the `role` column and backfills existing superusers to `admin`.
 
-[![API docs](img/docs.png)](https://github.com/fastapi/full-stack-fastapi-template)
+Backend authorization lives in FastAPI dependencies in `backend/app/api/deps.py`. The central helper is `require_roles(...)`, which keeps route-level permission checks declarative and easy to extend. User management routes use that dependency instead of scattering role checks through every handler. The only object-specific exception is profile access, where users can still read themselves and admins/managers can read other profiles.
 
-## How To Use It
+The frontend learns capabilities from `UsersService.readUserMe()`, which now includes `role`. Shared permission helpers in `frontend/src/permissions.ts` drive sidebar visibility, page access, and whether user-management actions render. These frontend checks are UX-only; the backend remains the source of truth for enforcement.
 
-You can **just fork or clone** this repository and use it as is.
+## Run Locally
 
-✨ It just works. ✨
+Prerequisites:
 
-### How to Use a Private Repository
+- Docker Desktop with Docker Compose.
 
-If you want to have a private repository, GitHub won't allow you to simply fork it as it doesn't allow changing the visibility of forks.
-
-But you can do the following:
-
-- Create a new GitHub repo, for example `my-full-stack`.
-- Clone this repository manually, set the name with the name of the project you want to use, for example `my-full-stack`:
+Start the full stack from the repository root:
 
 ```bash
-git clone git@github.com:fastapi/full-stack-fastapi-template.git my-full-stack
+docker compose watch
 ```
 
-- Enter into the new directory:
+Open:
+
+- Frontend: `http://localhost:5173`
+- Backend API docs: `http://localhost:8000/docs`
+- Adminer: `http://localhost:8080`
+
+If you prefer running only the frontend locally, install Bun and run:
 
 ```bash
-cd my-full-stack
+cd frontend
+bun install
+bun run dev
 ```
 
-- Set the new origin to your new repository, copy it from the GitHub interface, for example:
+The frontend still expects the backend to be running at `http://localhost:8000`.
+
+## Seeded Test Users
+
+The application seeds one admin from `.env` plus one manager and one member during backend startup.
+
+| Role | Email | Password |
+| --- | --- | --- |
+| admin | `admin@example.com` | `changethis` |
+| manager | `manager@example.com` | `changethis` |
+| member | `member@example.com` | `changethis` |
+
+The admin credentials come from:
+
+```env
+FIRST_SUPERUSER=admin@example.com
+FIRST_SUPERUSER_PASSWORD=changethis
+```
+
+## Tests
+
+Run the backend test suite in Docker:
 
 ```bash
-git remote set-url origin git@github.com:octocat/my-full-stack.git
+docker compose up -d --wait backend
+docker compose exec backend bash scripts/tests-start.sh
 ```
 
-- Add this repo as another "remote" to allow you to get updates later:
+Run the focused RBAC tests:
 
 ```bash
-git remote add upstream git@github.com:fastapi/full-stack-fastapi-template.git
+docker compose exec backend bash scripts/tests-start.sh tests/api/routes/test_users.py tests/api/routes/test_metrics.py
 ```
 
-- Push the code to your new repository:
+Run frontend checks:
 
 ```bash
-git push -u origin master
+cd frontend
+bun install
+bun run build
+bun run lint
 ```
 
-### Update From the Original Template
-
-After cloning the repository, and after doing changes, you might want to get the latest changes from this original template.
-
-- Make sure you added the original repository as a remote, you can check it with:
+Run Playwright tests:
 
 ```bash
-git remote -v
-
-origin    git@github.com:octocat/my-full-stack.git (fetch)
-origin    git@github.com:octocat/my-full-stack.git (push)
-upstream    git@github.com:fastapi/full-stack-fastapi-template.git (fetch)
-upstream    git@github.com:fastapi/full-stack-fastapi-template.git (push)
+docker compose up -d --wait backend
+cd frontend
+bunx playwright test
 ```
 
-- Pull the latest changes without merging:
+## Database Migration
+
+RBAC adds a `role` column to the `user` table.
+
+Migration file:
+
+```text
+backend/app/alembic/versions/b3a8e8a9d5f2_add_user_role.py
+```
+
+Docker startup runs the existing prestart flow, which applies Alembic migrations automatically. To run migrations manually inside the backend container:
 
 ```bash
-git pull --no-commit upstream master
+docker compose exec backend alembic upgrade head
 ```
 
-This will download the latest changes from this template without committing them, that way you can check everything is right before committing.
+## Developer Notes
 
-- If there are conflicts, solve them in your editor.
+Important implementation files:
 
-- Once you are done, commit the changes:
+- `backend/app/models.py`: `UserRole` enum and `User.role`.
+- `backend/app/api/deps.py`: reusable role authorization dependency.
+- `backend/app/api/routes/users.py`: protected user-management routes.
+- `backend/app/api/routes/metrics.py`: metrics endpoint for admins/managers.
+- `backend/app/core/db.py`: seed admin, manager, and member users.
+- `frontend/src/permissions.ts`: frontend capability helpers.
+- `frontend/src/routes/_layout/admin.tsx`: role-aware user page.
+- `frontend/src/routes/_layout/metrics.tsx`: metrics page.
+- `frontend/src/components/Common/Forbidden.tsx`: friendly forbidden state.
 
-```bash
-git merge --continue
-```
+The frontend client files under `frontend/src/client/` were updated to include the new `role` field and metrics service.
 
-### Configure
+## Infrastructure Task: Ghost on Hetzner
 
-You can then update configs in the `.env` files to customize your configurations.
+The infrastructure deliverable is available in both `GHOST.md` and `infra/ghost/`. It provides a one-click script to deploy Ghost to a Hetzner Cloud VPS without public SSH access. The server is provisioned with cloud-init, runs Ghost and MySQL with Docker Compose, and exposes Ghost only through an outbound Cloudflare Tunnel.
 
-Before deploying it, make sure you change at least the values for:
+See `GHOST.md` for the architecture, prerequisites, deployment command, security model, and cleanup steps.
 
-- `SECRET_KEY`
-- `FIRST_SUPERUSER_PASSWORD`
-- `POSTGRES_PASSWORD`
+## Scope Notes
 
-You can (and should) pass these as environment variables from secrets.
-
-Read the [deployment.md](./deployment.md) docs for more details.
-
-### Generate Secret Keys
-
-Some environment variables in the `.env` file have a default value of `changethis`.
-
-You have to change them with a secret key, to generate secret keys you can run the following command:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-Copy the content and use that as password / secret key. And run that again to generate another secure key.
-
-## How To Use It - Alternative With Copier
-
-This repository also supports generating a new project using [Copier](https://copier.readthedocs.io).
-
-It will copy all the files, ask you configuration questions, and update the `.env` files with your answers.
-
-### Install Copier
-
-You can install Copier with:
-
-```bash
-pip install copier
-```
-
-Or better, if you have [`pipx`](https://pipx.pypa.io/), you can run it with:
-
-```bash
-pipx install copier
-```
-
-**Note**: If you have `pipx`, installing copier is optional, you could run it directly.
-
-### Generate a Project With Copier
-
-Decide a name for your new project's directory, you will use it below. For example, `my-awesome-project`.
-
-Go to the directory that will be the parent of your project, and run the command with your project's name:
-
-```bash
-copier copy https://github.com/fastapi/full-stack-fastapi-template my-awesome-project --trust
-```
-
-If you have `pipx` and you didn't install `copier`, you can run it directly:
-
-```bash
-pipx run copier copy https://github.com/fastapi/full-stack-fastapi-template my-awesome-project --trust
-```
-
-**Note** the `--trust` option is necessary to be able to execute a [post-creation script](https://github.com/fastapi/full-stack-fastapi-template/blob/master/.copier/update_dotenv.py) that updates your `.env` files.
-
-### Input Variables
-
-Copier will ask you for some data, you might want to have at hand before generating the project.
-
-But don't worry, you can just update any of that in the `.env` files afterwards.
-
-The input variables, with their default values (some auto generated) are:
-
-- `project_name`: (default: `"FastAPI Project"`) The name of the project, shown to API users (in .env).
-- `stack_name`: (default: `"fastapi-project"`) The name of the stack used for Docker Compose labels and project name (no spaces, no periods) (in .env).
-- `secret_key`: (default: `"changethis"`) The secret key for the project, used for security, stored in .env, you can generate one with the method above.
-- `first_superuser`: (default: `"admin@example.com"`) The email of the first superuser (in .env).
-- `first_superuser_password`: (default: `"changethis"`) The password of the first superuser (in .env).
-- `smtp_host`: (default: "") The SMTP server host to send emails, you can set it later in .env.
-- `smtp_user`: (default: "") The SMTP server user to send emails, you can set it later in .env.
-- `smtp_password`: (default: "") The SMTP server password to send emails, you can set it later in .env.
-- `emails_from_email`: (default: `"info@example.com"`) The email account to send emails from, you can set it later in .env.
-- `postgres_password`: (default: `"changethis"`) The password for the PostgreSQL database, stored in .env, you can generate one with the method above.
-- `sentry_dsn`: (default: "") The DSN for Sentry, if you are using it, you can set it later in .env.
-
-## Backend Development
-
-Backend docs: [backend/README.md](./backend/README.md).
-
-## Frontend Development
-
-Frontend docs: [frontend/README.md](./frontend/README.md).
-
-## Deployment
-
-Deployment docs: [deployment.md](./deployment.md).
-
-## Development
-
-General development docs: [development.md](./development.md).
-
-This includes using Docker Compose, custom local domains, `.env` configurations, etc.
-
-## Release Notes
-
-Check the file [release-notes.md](./release-notes.md).
-
-## License
-
-The Full Stack FastAPI Template is licensed under the terms of the MIT license.
+The RBAC implementation is intentionally small and explicit. It favors readable dependencies and shared permission helpers over a larger policy framework. Observability for denied attempts and a formal ADR were left out to keep the implementation focused on the required authorization behavior, tests, setup, and documentation.
