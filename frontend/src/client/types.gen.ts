@@ -40,6 +40,12 @@ export type Message = {
     message: string;
 };
 
+export type MetricsReadMetricsResponse = {
+    users: number;
+    items: number;
+    summary: string;
+};
+
 export type NewPassword = {
     token: string;
     new_password: string;
@@ -66,6 +72,7 @@ export type UserCreate = {
     email: string;
     is_active?: boolean;
     is_superuser?: boolean;
+    role?: UserRole;
     full_name?: (string | null);
     password: string;
 };
@@ -74,6 +81,7 @@ export type UserPublic = {
     email: string;
     is_active?: boolean;
     is_superuser?: boolean;
+    role?: UserRole;
     full_name?: (string | null);
     id: string;
     created_at?: (string | null);
@@ -90,10 +98,13 @@ export type UsersPublic = {
     count: number;
 };
 
+export type UserRole = 'admin' | 'manager' | 'member';
+
 export type UserUpdate = {
     email?: (string | null);
     is_active?: boolean;
     is_superuser?: boolean;
+    role?: (UserRole | null);
     full_name?: (string | null);
     password?: (string | null);
 };
