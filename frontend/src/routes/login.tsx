@@ -7,7 +7,11 @@ import {
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
-import type { Body_login_login_access_token as AccessToken } from "@/client"
+import {
+  ApiError,
+  type Body_login_login_access_token as AccessToken,
+  UsersService,
+} from "@/client"
 import { AuthLayout } from "@/components/Common/AuthLayout"
 import {
   Form,
@@ -35,11 +39,19 @@ type FormData = z.infer<typeof formSchema>
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
-    if (isLoggedIn()) {
-      throw redirect({
-        to: "/",
-      })
+    if (!isLoggedIn()) return
+    try {
+      await UsersService.readUserMe()
+    } catch (error) {
+      if (error instanceof ApiError && [401, 403].includes(error.status)) {
+        localStorage.removeItem("access_token")
+        return
+      }
+      throw error
     }
+    throw redirect({
+      to: "/",
+    })
   },
   head: () => ({
     meta: [

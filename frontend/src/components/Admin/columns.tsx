@@ -7,6 +7,7 @@ import { UserActionsMenu } from "./UserActionsMenu"
 
 export type UserTableData = UserPublic & {
   isCurrentUser: boolean
+  canManageUsers: boolean
 }
 
 export const columns: ColumnDef<UserTableData>[] = [
@@ -39,11 +40,11 @@ export const columns: ColumnDef<UserTableData>[] = [
     ),
   },
   {
-    accessorKey: "is_superuser",
+    accessorKey: "role",
     header: "Role",
     cell: ({ row }) => (
-      <Badge variant={row.original.is_superuser ? "default" : "secondary"}>
-        {row.original.is_superuser ? "Superuser" : "User"}
+      <Badge variant={row.original.role === "admin" ? "default" : "secondary"}>
+        {row.original.role ?? (row.original.is_superuser ? "admin" : "member")}
       </Badge>
     ),
   },
@@ -67,10 +68,11 @@ export const columns: ColumnDef<UserTableData>[] = [
   {
     id: "actions",
     header: () => <span className="sr-only">Actions</span>,
-    cell: ({ row }) => (
-      <div className="flex justify-end">
-        <UserActionsMenu user={row.original} />
-      </div>
-    ),
+    cell: ({ row }) =>
+      row.original.canManageUsers ? (
+        <div className="flex justify-end">
+          <UserActionsMenu user={row.original} />
+        </div>
+      ) : null,
   },
 ]
